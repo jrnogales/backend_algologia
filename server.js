@@ -162,6 +162,20 @@ app.post('/api/facturar', verifyToken, async (req, res) => {
   }
 });
 
+// Ruta pública: citas confirmadas para bloqueo
+app.get('/api/citas/ocupadas', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT fecha, h.hora
+      FROM citas c
+      JOIN horarios h ON c.hora_id = h.id
+    `);
+    res.json(result.rows);
+  } catch (err) {
+    console.error("Error al obtener citas ocupadas:", err);
+    res.status(500).json({ message: "Error al obtener citas ocupadas" });
+  }
+});
 
 // Rutas administrativas
 app.get('/api/admin/citas', verifyToken, async (req, res) => {
@@ -175,22 +189,6 @@ app.get('/api/admin/citas', verifyToken, async (req, res) => {
      ORDER BY c.fecha, h.hora`
   );
   res.json(result.rows);
-  
-  // Citas ya ocupadas (confirmadas globalmente)
-app.get('/api/citas/ocupadas', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT fecha, h.hora
-      FROM citas c
-      JOIN horarios h ON c.hora_id = h.id
-    `);
-    res.json(result.rows); // [{fecha: '2025-07-03', hora: '09:00'}, ...]
-  } catch (err) {
-    console.error("Error al obtener citas ocupadas:", err);
-    res.status(500).json({ message: "Error al obtener citas ocupadas" });
-  }
-});
-
 });
 
 app.delete('/api/admin/citas/:id', verifyToken, async (req, res) => {
