@@ -132,21 +132,14 @@ app.get('/api/carrito', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
-// Generar factura
+// Generar factura (valores calculados en frontend)
 app.post('/api/facturar', verifyToken, async (req, res) => {
   try {
     const usuario_id = req.usuario.id;
+    const { subtotal, iva, total } = req.body;
+
     const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
     if (citas.rowCount === 0) return res.status(400).json({ message: 'No hay citas en el carrito.' });
-
-    const precioRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'precio_cita'");
-    const ivaRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'iva'");
-
-    const precio = parseFloat(precioRow.rows[0].valor);
-    const ivaRate = parseFloat(ivaRow.rows[0].valor);
-    const subtotal = citas.rowCount * precio;
-    const iva = subtotal * ivaRate;
-    const total = subtotal + iva;
 
     const factura = await pool.query(
       'INSERT INTO facturas (usuario_id, subtotal, iva, total) VALUES ($1,$2,$3,$4) RETURNING id',
@@ -156,7 +149,7 @@ app.post('/api/facturar', verifyToken, async (req, res) => {
     for (let cita of citas.rows) {
       const nueva = await pool.query(
         'INSERT INTO citas (usuario_id, patologia_id, fecha, hora_id, precio) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, precio]
+        [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, subtotal / citas.rowCount]
       );
       await pool.query('INSERT INTO detalle_factura (factura_id, cita_id) VALUES ($1, $2)', [factura.rows[0].id, nueva.rows[0].id]);
     }
@@ -168,6 +161,7 @@ app.post('/api/facturar', verifyToken, async (req, res) => {
     res.status(500).json({ message: 'Error inesperado al generar factura.' });
   }
 });
+
 
 // Rutas administrativas
 app.get('/api/admin/citas', verifyToken, async (req, res) => {
