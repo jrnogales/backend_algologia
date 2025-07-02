@@ -81,30 +81,16 @@ app.post('/api/carrito', verifyToken, async (req, res) => {
   const { patologia_id, fecha, hora_id } = req.body;
   const usuario_id = req.usuario.id;
 
-  // Verificar si ya existe en carrito del mismo usuario
-  const yaExiste = await pool.query(
-    'SELECT 1 FROM carrito WHERE usuario_id = $1 AND fecha = $2 AND hora_id = $3',
-    [usuario_id, fecha, hora_id]
-  );
-  if (yaExiste.rowCount > 0) {
-    return res.status(400).json({ message: 'Ya tienes una cita en esa hora y fecha en el carrito' });
+  try {
+    await pool.query(
+      'INSERT INTO carrito (usuario_id, patologia_id, fecha, hora_id) VALUES ($1, $2, $3, $4)',
+      [usuario_id, patologia_id, fecha, hora_id]
+    );
+    res.json({ message: 'Cita añadida al carrito correctamente.' });
+  } catch (error) {
+    console.error("Error al insertar en carrito:", error);
+    res.status(500).json({ message: 'Error al añadir cita al carrito.' });
   }
-
-  // Verificar si ya fue reservada por otro usuario
-  const yaConfirmada = await pool.query(
-    'SELECT 1 FROM citas WHERE fecha = $1 AND hora_id = $2',
-    [fecha, hora_id]
-  );
-  if (yaConfirmada.rowCount > 0) {
-    return res.status(400).json({ message: 'Esa hora ya fue reservada por otro paciente' });
-  }
-
-  // Insertar en el carrito
-  await pool.query(
-    'INSERT INTO carrito (usuario_id, patologia_id, fecha, hora_id) VALUES ($1,$2,$3,$4)',
-    [usuario_id, patologia_id, fecha, hora_id]
-  );
-  res.json({ message: 'Cita añadida al carrito' });
 });
 
 
