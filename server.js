@@ -68,7 +68,12 @@ app.post('/api/usuarios/login', async (req, res) => {
   if (!valid) return res.status(401).json({ message: 'Contraseña incorrecta' });
 
   const token = jwt.sign({ id: user.id, rol: user.rol }, process.env.JWT_SECRET, { expiresIn: '8h' });
-  res.json({ token });
+  res.json({
+  token,
+  usuario: {
+    nombres: user.nombres
+  }
+});
 });
 
 // Añadir cita al carrito (requiere login)
