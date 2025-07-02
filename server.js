@@ -4,6 +4,7 @@ const cors = require('cors');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
+
 const app = express();
 app.use(cors());
 app.use(express.json());
@@ -93,7 +94,7 @@ app.post('/api/carrito', verifyToken, async (req, res) => {
   }
 });
 
-// ✅ ELIMINAR cita del carrito (cuando ya ha iniciado sesión)
+// Eliminar cita del carrito (requiere login)
 app.delete('/api/carrito/eliminar', verifyToken, async (req, res) => {
   const { fecha, hora } = req.body;
   const usuario_id = req.usuario.id;
@@ -130,31 +131,42 @@ app.get('/api/carrito', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
-// Facturar: pasa las citas del carrito a citas confirmadas y genera factura
+// Generar factura
 app.post('/api/facturar', verifyToken, async (req, res) => {
-  const usuario_id = req.usuario.id;
-  const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
-  const precioRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'precio_cita'");
-  const precio = parseFloat(precioRow.rows[0].valor);
-  const subtotal = citas.rowCount * precio;
-  const iva = subtotal * 0.15;
-  const total = subtotal + iva;
+  try {
+    const usuario_id = req.usuario.id;
 
-  const factura = await pool.query(
-    'INSERT INTO facturas (usuario_id, subtotal, iva, total) VALUES ($1,$2,$3,$4) RETURNING id',
-    [usuario_id, subtotal, iva, total]
-  );
+    const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
 
-  for (let cita of citas.rows) {
-    const nueva = await pool.query(
-      'INSERT INTO citas (usuario_id, patologia_id, fecha, hora_id, precio) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-      [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, precio]
+    if (citas.rowCount === 0) {
+      return res.status(400).json({ message: 'No hay citas en el carrito.' });
+    }
+
+    const precioRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'precio_cita'");
+    const precio = parseFloat(precioRow.rows[0].valor);
+    const subtotal = citas.rowCount * precio;
+    const iva = subtotal * 0.15;
+    const total = subtotal + iva;
+
+    const factura = await pool.query(
+      'INSERT INTO facturas (usuario_id, subtotal, iva, total) VALUES ($1,$2,$3,$4) RETURNING id',
+      [usuario_id, subtotal, iva, total]
     );
-    await pool.query('INSERT INTO detalle_factura (factura_id, cita_id) VALUES ($1, $2)', [factura.rows[0].id, nueva.rows[0].id]);
-  }
 
-  await pool.query('DELETE FROM carrito WHERE usuario_id = $1', [usuario_id]);
-  res.json({ message: 'Factura generada', total });
+    for (let cita of citas.rows) {
+      const nueva = await pool.query(
+        'INSERT INTO citas (usuario_id, patologia_id, fecha, hora_id, precio) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+        [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, precio]
+      );
+      await pool.query('INSERT INTO detalle_factura (factura_id, cita_id) VALUES ($1, $2)', [factura.rows[0].id, nueva.rows[0].id]);
+    }
+
+    await pool.query('DELETE FROM carrito WHERE usuario_id = $1', [usuario_id]);
+    res.json({ message: 'Factura generada', total });
+  } catch (err) {
+    console.error("Error al facturar:", err);
+    res.status(500).json({ message: 'Error inesperado al generar factura.' });
+  }
 });
 
 // Rutas administrativas
@@ -206,5 +218,6 @@ app.get('/api/admin/soporte', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
+// Arranque del servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Servidor corriendo en puerto ' + PORT));
