@@ -47,6 +47,16 @@ app.get('/api/precio-cita', async (_, res) => {
   res.json({ precio: parseFloat(result.rows[0].valor) });
 });
 
+app.get('/api/configuracion/iva', async (_, res) => {
+  try {
+    const result = await pool.query("SELECT valor FROM configuracion WHERE clave = 'iva'");
+    res.json({ valor: parseFloat(result.rows[0].valor) });
+  } catch (error) {
+    console.error("Error al obtener IVA:", error);
+    res.status(500).json({ message: "Error al obtener el IVA" });
+  }
+});
+
 // Registro
 app.post('/api/usuarios/registrar', async (req, res) => {
   const { nombres, apellidos, telefono, email, fecha_nacimiento, tipo_sangre_id, usuario, contrasena } = req.body;
@@ -89,7 +99,6 @@ app.post('/api/carrito', verifyToken, async (req, res) => {
     );
     res.json({ message: 'Cita añadida al carrito correctamente.' });
   } catch (error) {
-    console.error("Error al insertar en carrito:", error);
     res.status(500).json({ message: 'Error al añadir cita al carrito.' });
   }
 });
@@ -101,20 +110,12 @@ app.delete('/api/carrito/eliminar', verifyToken, async (req, res) => {
 
   try {
     const result = await pool.query(
-      `DELETE FROM carrito
-       WHERE usuario_id = $1 AND fecha = $2 AND hora_id = (
-         SELECT id FROM horarios WHERE hora = $3
-       )`,
+      `DELETE FROM carrito WHERE usuario_id = $1 AND fecha = $2 AND hora_id = (SELECT id FROM horarios WHERE hora = $3)`,
       [usuario_id, fecha, hora]
     );
-
-    if (result.rowCount === 0) {
-      return res.status(404).json({ message: "Cita no encontrada en el carrito." });
-    }
-
+    if (result.rowCount === 0) return res.status(404).json({ message: "Cita no encontrada en el carrito." });
     res.json({ message: "Cita eliminada del carrito." });
   } catch (error) {
-    console.error("Error eliminando cita del carrito:", error);
     res.status(500).json({ message: "Error al eliminar la cita." });
   }
 });
@@ -135,17 +136,16 @@ app.get('/api/carrito', verifyToken, async (req, res) => {
 app.post('/api/facturar', verifyToken, async (req, res) => {
   try {
     const usuario_id = req.usuario.id;
-
     const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
-
-    if (citas.rowCount === 0) {
-      return res.status(400).json({ message: 'No hay citas en el carrito.' });
-    }
+    if (citas.rowCount === 0) return res.status(400).json({ message: 'No hay citas en el carrito.' });
 
     const precioRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'precio_cita'");
+    const ivaRow = await pool.query("SELECT valor FROM configuracion WHERE clave = 'iva'");
+
     const precio = parseFloat(precioRow.rows[0].valor);
+    const ivaRate = parseFloat(ivaRow.rows[0].valor);
     const subtotal = citas.rowCount * precio;
-    const iva = subtotal * 0.15;
+    const iva = subtotal * ivaRate;
     const total = subtotal + iva;
 
     const factura = await pool.query(
