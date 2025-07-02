@@ -5,7 +5,6 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const { Pool } = require('pg');
 const app = express();
-
 app.use(cors());
 app.use(express.json());
 
@@ -94,33 +93,32 @@ app.post('/api/carrito', verifyToken, async (req, res) => {
   }
 });
 
-// Eliminar cita del carrito por fecha y hora (requiere login)
+// ✅ ELIMINAR cita del carrito (cuando ya ha iniciado sesión)
 app.delete('/api/carrito/eliminar', verifyToken, async (req, res) => {
-  const usuario_id = req.usuario.id;
   const { fecha, hora } = req.body;
+  const usuario_id = req.usuario.id;
 
   try {
-    const result = await pool.query(`
-      DELETE FROM carrito
-      WHERE usuario_id = $1 AND fecha = $2 AND hora_id = (
-        SELECT id FROM horarios WHERE hora = $3
-      )
-      RETURNING *`,
+    const result = await pool.query(
+      `DELETE FROM carrito
+       WHERE usuario_id = $1 AND fecha = $2 AND hora_id = (
+         SELECT id FROM horarios WHERE hora = $3
+       )`,
       [usuario_id, fecha, hora]
     );
 
     if (result.rowCount === 0) {
-      return res.status(404).json({ message: 'No se encontró la cita en el carrito' });
+      return res.status(404).json({ message: "Cita no encontrada en el carrito." });
     }
 
-    res.json({ message: 'Cita eliminada del carrito' });
+    res.json({ message: "Cita eliminada del carrito." });
   } catch (error) {
-    console.error("Error al eliminar del carrito:", error);
-    res.status(500).json({ message: 'Error al eliminar la cita del carrito' });
+    console.error("Error eliminando cita del carrito:", error);
+    res.status(500).json({ message: "Error al eliminar la cita." });
   }
 });
 
-// Obtener citas del carrito (requiere login)
+// Obtener carrito del usuario
 app.get('/api/carrito', verifyToken, async (req, res) => {
   const result = await pool.query(
     `SELECT c.id, p.nombre AS patologia, c.fecha, h.hora FROM carrito c
@@ -132,7 +130,7 @@ app.get('/api/carrito', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
-// Facturar (requiere login)
+// Facturar: pasa las citas del carrito a citas confirmadas y genera factura
 app.post('/api/facturar', verifyToken, async (req, res) => {
   const usuario_id = req.usuario.id;
   const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
@@ -208,6 +206,5 @@ app.get('/api/admin/soporte', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
-// Iniciar servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Servidor corriendo en puerto ' + PORT));
