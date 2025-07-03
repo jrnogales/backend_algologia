@@ -233,6 +233,47 @@ app.post('/api/soporte', verifyToken, async (req, res) => {
   }
 });
 
+// Usuarios
+app.get('/api/admin/usuarios', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  const result = await pool.query('SELECT id, nombres, apellidos, email, usuario, rol FROM usuarios ORDER BY id');
+  res.json(result.rows);
+});
+
+app.delete('/api/admin/usuarios/:id', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  await pool.query('DELETE FROM usuarios WHERE id = $1', [req.params.id]);
+  res.json({ message: 'Usuario eliminado' });
+});
+
+// Patologías
+app.post('/api/admin/patologias', verifyToken, async (req, res) => {
+  const { nombre } = req.body;
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  await pool.query('INSERT INTO patologias (nombre) VALUES ($1)', [nombre]);
+  res.json({ message: 'Patología añadida' });
+});
+
+app.delete('/api/admin/patologias/:id', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  await pool.query('DELETE FROM patologias WHERE id = $1', [req.params.id]);
+  res.json({ message: 'Patología eliminada' });
+});
+
+// Horarios
+app.post('/api/admin/horarios', verifyToken, async (req, res) => {
+  const { hora } = req.body;
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  await pool.query('INSERT INTO horarios (hora) VALUES ($1)', [hora]);
+  res.json({ message: 'Horario añadido' });
+});
+
+app.delete('/api/admin/horarios/:id', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  await pool.query('DELETE FROM horarios WHERE id = $1', [req.params.id]);
+  res.json({ message: 'Horario eliminado' });
+});
+
 
 
 // Rutas administrativas
