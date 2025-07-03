@@ -325,6 +325,13 @@ app.get('/api/admin/soporte', verifyToken, async (req, res) => {
   res.json(result.rows);
 });
 
+app.put('/api/admin/iva', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+  const { nuevo_iva } = req.body;
+  await pool.query("UPDATE configuracion SET valor = $1 WHERE clave = 'iva'", [nuevo_iva]);
+  res.json({ message: 'IVA actualizado' });
+});
+
 // Arranque del servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Servidor corriendo en puerto ' + PORT));
