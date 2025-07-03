@@ -215,6 +215,24 @@ app.get('/api/carrito/usuario', verifyToken, async (req, res) => {
     res.status(500).json({ message: "Error al obtener citas del carrito" });
   }
 });
+// Añadir mensaje de soporte del usuario logueado
+app.post('/api/soporte', verifyToken, async (req, res) => {
+  const { asunto, mensaje } = req.body;
+  const usuario_id = req.usuario.id;
+
+  try {
+    await pool.query(
+      'INSERT INTO soporte (usuario_id, asunto, mensaje) VALUES ($1, $2, $3)',
+      [usuario_id, asunto, mensaje]
+    );
+
+    res.json({ message: 'Mensaje enviado con éxito.' });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: 'Error al enviar mensaje.' });
+  }
+});
+
 
 
 // Rutas administrativas
