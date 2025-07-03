@@ -87,21 +87,43 @@ app.post('/api/usuarios/login', async (req, res) => {
   });
 });
 
-// Añadir cita al carrito (requiere login)
 app.post('/api/carrito', verifyToken, async (req, res) => {
   const { patologia_id, fecha, hora_id } = req.body;
   const usuario_id = req.usuario.id;
 
   try {
+    // Validar si ya existe en carrito
+    const existeEnCarrito = await pool.query(
+      'SELECT * FROM carrito WHERE usuario_id = $1 AND fecha = $2 AND hora_id = $3',
+      [usuario_id, fecha, hora_id]
+    );
+
+    if (existeEnCarrito.rowCount > 0) {
+      return res.status(400).json({ message: 'Ya tienes esta cita en tu carrito.' });
+    }
+
+    // Validar si existe ya como cita confirmada
+    const existeConfirmada = await pool.query(
+      'SELECT * FROM citas WHERE fecha = $1 AND hora_id = $2',
+      [fecha, hora_id]
+    );
+
+    if (existeConfirmada.rowCount > 0) {
+      return res.status(400).json({ message: 'Esta hora ya fue reservada por otro usuario.' });
+    }
+
     await pool.query(
       'INSERT INTO carrito (usuario_id, patologia_id, fecha, hora_id) VALUES ($1, $2, $3, $4)',
       [usuario_id, patologia_id, fecha, hora_id]
     );
+
     res.json({ message: 'Cita añadida al carrito correctamente.' });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ message: 'Error al añadir cita al carrito.' });
   }
 });
+
 
 // Eliminar cita del carrito (requiere login)
 app.delete('/api/carrito/eliminar', verifyToken, async (req, res) => {
@@ -176,6 +198,24 @@ app.get('/api/citas/ocupadas', async (req, res) => {
     res.status(500).json({ message: "Error al obtener citas ocupadas" });
   }
 });
+
+// Obtener citas del carrito del usuario (bloqueo temporal)
+app.get('/api/carrito/usuario', verifyToken, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT fecha, h.hora
+      FROM carrito c
+      JOIN horarios h ON c.hora_id = h.id
+      WHERE c.usuario_id = $1
+    `, [req.usuario.id]);
+
+    res.json(result.rows);
+  } catch (error) {
+    console.error("Error al obtener citas del carrito:", error);
+    res.status(500).json({ message: "Error al obtener citas del carrito" });
+  }
+});
+
 
 // Rutas administrativas
 app.get('/api/admin/citas', verifyToken, async (req, res) => {
