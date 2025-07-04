@@ -331,6 +331,18 @@ app.put('/api/admin/iva', verifyToken, async (req, res) => {
   await pool.query("UPDATE configuracion SET valor = $1 WHERE clave = 'iva'", [nuevo_iva]);
   res.json({ message: 'IVA actualizado' });
 });
+// Validar existencia de usuario (para registro en tiempo real)
+app.get('/api/usuarios/existe/:usuario', async (req, res) => {
+  const { usuario } = req.params;
+  try {
+    const result = await pool.query('SELECT id FROM usuarios WHERE usuario = $1', [usuario]);
+    res.json({ existe: result.rowCount > 0 });
+  } catch (error) {
+    console.error("Error al verificar existencia del usuario:", error);
+    res.status(500).json({ message: "Error en la validación de usuario" });
+  }
+});
+
 
 // Arranque del servidor
 const PORT = process.env.PORT || 3000;
