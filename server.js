@@ -64,7 +64,12 @@ app.get('/api/admin/factura/:id', verifyToken, async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT CONCAT(u.nombres, ' ', u.apellidos) AS cliente, p.nombre AS patologia, c.fecha, h.hora, c.precio
+      SELECT 
+        CONCAT(u.nombres, ' ', u.apellidos) AS cliente,
+        p.nombre AS patologia,
+        c.fecha,
+        h.hora,
+        c.precio
       FROM detalle_factura df
       JOIN facturas f ON f.id = df.factura_id
       JOIN citas c ON c.id = df.cita_id
