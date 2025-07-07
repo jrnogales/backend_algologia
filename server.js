@@ -56,6 +56,31 @@ app.get('/api/configuracion/iva', async (_, res) => {
     res.status(500).json({ message: "Error al obtener el IVA" });
   }
 });
+// Obtener detalle completo de una factura
+app.get('/api/admin/facturas/:id', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+
+  const id = req.params.id;
+
+  const encabezado = await pool.query(`
+    SELECT f.*, u.usuario 
+    FROM facturas f
+    JOIN usuarios u ON u.id = f.usuario_id
+    WHERE f.id = $1
+  `, [id]);
+
+  const detalle = await pool.query(`
+    SELECT p.nombre AS patologia, c.fecha, h.hora, c.precio
+    FROM detalle_factura df
+    JOIN citas c ON c.id = df.cita_id
+    JOIN patologias p ON p.id = c.patologia_id
+    JOIN horarios h ON h.id = c.hora_id
+    WHERE df.factura_id = $1
+  `, [id]);
+
+  res.json({ encabezado: encabezado.rows[0], detalle: detalle.rows });
+});
+
 
 // Registro
 app.post('/api/usuarios/registrar', async (req, res) => {
