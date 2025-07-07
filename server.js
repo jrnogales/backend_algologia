@@ -56,6 +56,7 @@ app.get('/api/configuracion/iva', async (_, res) => {
     res.status(500).json({ message: "Error al obtener el IVA" });
   }
 });
+
 // Obtener detalle completo de una factura
 app.get('/api/admin/factura/:id', verifyToken, async (req, res) => {
   if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
@@ -63,7 +64,7 @@ app.get('/api/admin/factura/:id', verifyToken, async (req, res) => {
 
   try {
     const result = await pool.query(`
-      SELECT u.usuario, p.nombre AS patologia, c.fecha, h.hora, c.precio
+      SELECT CONCAT(u.nombres, ' ', u.apellidos) AS cliente, p.nombre AS patologia, c.fecha, h.hora, c.precio
       FROM detalle_factura df
       JOIN facturas f ON f.id = df.factura_id
       JOIN citas c ON c.id = df.cita_id
@@ -73,12 +74,48 @@ app.get('/api/admin/factura/:id', verifyToken, async (req, res) => {
       WHERE f.id = $1
     `, [id]);
 
-    res.json(result.rows);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ message: "Factura no encontrada o sin detalles." });
+    }
+
+    // Extraer info del encabezado desde la primera fila
+    const encabezado = {
+      id,
+      cliente: result.rows[0].cliente,
+      fecha: result.rows[0].fecha,
+      subtotal: result.rows.reduce((sum, row) => sum + parseFloat(row.precio), 0),
+    };
+
+    // Consultar el IVA desde base de datos
+    const ivaRes = await pool.query(`SELECT valor FROM configuracion WHERE clave = 'iva'`);
+    const ivaPorcentaje = parseFloat(ivaRes.rows[0].valor);
+
+    const iva = parseFloat((encabezado.subtotal * ivaPorcentaje).toFixed(2));
+    const total = parseFloat((encabezado.subtotal + iva).toFixed(2));
+
+    res.json({
+      factura: {
+        id,
+        cliente: encabezado.cliente,
+        fecha: encabezado.fecha,
+        subtotal: encabezado.subtotal,
+        iva,
+        total
+      },
+      detalle: result.rows.map(row => ({
+        patologia: row.patologia,
+        fecha: row.fecha,
+        hora: row.hora,
+        precio: parseFloat(row.precio)
+      }))
+    });
+
   } catch (error) {
     console.error("Error al obtener detalle de factura:", error);
     res.status(500).json({ message: "Error al obtener detalle de factura" });
   }
 });
+
 
 
 // Registro
