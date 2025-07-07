@@ -159,29 +159,61 @@ app.post('/api/facturar', verifyToken, async (req, res) => {
     const usuario_id = req.usuario.id;
     const { subtotal, iva, total } = req.body;
 
+    // Obtener las citas del carrito
     const citas = await pool.query('SELECT * FROM carrito WHERE usuario_id = $1', [usuario_id]);
-    if (citas.rowCount === 0) return res.status(400).json({ message: 'No hay citas en el carrito.' });
+    console.log(`🔍 Usuario ${usuario_id} tiene ${citas.rowCount} citas en el carrito`);
 
+    if (citas.rowCount === 0) {
+      console.warn("⚠️ No hay citas en el carrito.");
+      return res.status(400).json({ message: 'No hay citas en el carrito.' });
+    }
+
+    // Insertar factura
     const factura = await pool.query(
       'INSERT INTO facturas (usuario_id, subtotal, iva, total) VALUES ($1,$2,$3,$4) RETURNING id',
       [usuario_id, subtotal, iva, total]
     );
 
+    const factura_id = factura.rows[0].id;
+    console.log(`✅ Factura creada con ID: ${factura_id}`);
+
+    // Insertar cada cita como confirmada y registrar detalle
     for (let cita of citas.rows) {
-      const nueva = await pool.query(
-        'INSERT INTO citas (usuario_id, patologia_id, fecha, hora_id, precio) VALUES ($1,$2,$3,$4,$5) RETURNING id',
-        [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, subtotal / citas.rowCount]
-      );
-      await pool.query('INSERT INTO detalle_factura (factura_id, cita_id) VALUES ($1, $2)', [factura.rows[0].id, nueva.rows[0].id]);
+      try {
+        const nueva = await pool.query(
+          'INSERT INTO citas (usuario_id, patologia_id, fecha, hora_id, precio) VALUES ($1,$2,$3,$4,$5) RETURNING id',
+          [usuario_id, cita.patologia_id, cita.fecha, cita.hora_id, subtotal / citas.rowCount]
+        );
+
+        const cita_id = nueva.rows[0]?.id;
+
+        if (!cita_id) {
+          console.error("❌ No se obtuvo el ID de la cita insertada.");
+          continue;
+        }
+
+        await pool.query(
+          'INSERT INTO detalle_factura (factura_id, cita_id) VALUES ($1, $2)',
+          [factura_id, cita_id]
+        );
+
+        console.log(`🧾 Detalle insertado: factura ${factura_id}, cita ${cita_id}`);
+      } catch (innerErr) {
+        console.error("❌ Error al insertar detalle_factura:", innerErr);
+      }
     }
 
+    // Vaciar carrito del usuario
     await pool.query('DELETE FROM carrito WHERE usuario_id = $1', [usuario_id]);
-    res.json({ message: 'Factura generada', total });
+    console.log(`🧹 Carrito de usuario ${usuario_id} eliminado`);
+
+    res.json({ message: 'Factura generada correctamente.', total });
   } catch (err) {
-    console.error("Error al facturar:", err);
+    console.error("❌ Error general al facturar:", err);
     res.status(500).json({ message: 'Error inesperado al generar factura.' });
   }
 });
+
 
 // Ruta pública: citas confirmadas para bloqueo
 app.get('/api/citas/ocupadas', async (req, res) => {
