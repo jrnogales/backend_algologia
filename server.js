@@ -57,72 +57,6 @@ app.get('/api/configuracion/iva', async (_, res) => {
   }
 });
 
-// Obtener detalle completo de una factura
-app.get('/api/admin/factura/:id', verifyToken, async (req, res) => {
-  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
-  const { id } = req.params;
-
-  try {
-    const result = await pool.query(`
-      SELECT 
-        CONCAT(u.nombres, ' ', u.apellidos) AS cliente,
-        p.nombre AS patologia,
-        c.fecha,
-        h.hora,
-        c.precio
-      FROM detalle_factura df
-      JOIN facturas f ON f.id = df.factura_id
-      JOIN citas c ON c.id = df.cita_id
-      JOIN usuarios u ON u.id = c.usuario_id
-      JOIN patologias p ON p.id = c.patologia_id
-      JOIN horarios h ON h.id = c.hora_id
-      WHERE f.id = $1
-    `, [id]);
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ message: "Factura no encontrada o sin detalles." });
-    }
-
-    // Extraer info del encabezado desde la primera fila
-    const encabezado = {
-      id,
-      cliente: result.rows[0].cliente,
-      fecha: result.rows[0].fecha,
-      subtotal: result.rows.reduce((sum, row) => sum + parseFloat(row.precio), 0),
-    };
-
-    // Consultar el IVA desde base de datos
-    const ivaRes = await pool.query(`SELECT valor FROM configuracion WHERE clave = 'iva'`);
-    const ivaPorcentaje = parseFloat(ivaRes.rows[0].valor);
-
-    const iva = parseFloat((encabezado.subtotal * ivaPorcentaje).toFixed(2));
-    const total = parseFloat((encabezado.subtotal + iva).toFixed(2));
-
-    res.json({
-      factura: {
-        id,
-        cliente: encabezado.cliente,
-        fecha: encabezado.fecha,
-        subtotal: encabezado.subtotal,
-        iva,
-        total
-      },
-      detalle: result.rows.map(row => ({
-        patologia: row.patologia,
-        fecha: row.fecha,
-        hora: row.hora,
-        precio: parseFloat(row.precio)
-      }))
-    });
-
-  } catch (error) {
-    console.error("Error al obtener detalle de factura:", error);
-    res.status(500).json({ message: "Error al obtener detalle de factura" });
-  }
-});
-
-
-
 // Registro
 app.post('/api/usuarios/registrar', async (req, res) => {
   const { nombres, apellidos, telefono, email, fecha_nacimiento, tipo_sangre_id, usuario, contrasena } = req.body;
@@ -189,7 +123,6 @@ app.post('/api/carrito', verifyToken, async (req, res) => {
     res.status(500).json({ message: 'Error al añadir cita al carrito.' });
   }
 });
-
 
 // Eliminar cita del carrito (requiere login)
 app.delete('/api/carrito/eliminar', verifyToken, async (req, res) => {
@@ -340,6 +273,46 @@ app.delete('/api/admin/horarios/:id', verifyToken, async (req, res) => {
   res.json({ message: 'Horario eliminado' });
 });
 
+// Obtener detalle completo de una factura específica
+app.get('/api/admin/facturas/:id', verifyToken, async (req, res) => {
+  if (req.usuario.rol !== 'admin') return res.status(403).json({ message: 'No autorizado' });
+
+  const facturaId = req.params.id;
+
+  try {
+    // Obtener encabezado de la factura
+    const encabezado = await pool.query(`
+      SELECT f.id AS factura_id, f.fecha, f.subtotal, f.iva, f.total,
+             u.nombres || ' ' || u.apellidos AS cliente
+      FROM facturas f
+      JOIN usuarios u ON f.usuario_id = u.id
+      WHERE f.id = $1
+    `, [facturaId]);
+
+    if (encabezado.rowCount === 0) {
+      return res.status(404).json({ message: 'Factura no encontrada' });
+    }
+
+    // Obtener detalle de los artículos (citas)
+    const detalle = await pool.query(`
+      SELECT p.nombre AS descripcion, c.fecha, h.hora, c.precio
+      FROM detalle_factura df
+      JOIN citas c ON df.cita_id = c.id
+      JOIN patologias p ON c.patologia_id = p.id
+      JOIN horarios h ON c.hora_id = h.id
+      WHERE df.factura_id = $1
+    `, [facturaId]);
+
+    res.json({
+      encabezado: encabezado.rows[0],
+      detalle: detalle.rows
+    });
+
+  } catch (error) {
+    console.error("Error al obtener el detalle de la factura:", error);
+    res.status(500).json({ message: 'Error al obtener el detalle de la factura' });
+  }
+});
 
 
 // Rutas administrativas
@@ -409,7 +382,7 @@ app.get('/api/usuarios/existe/:usuario', async (req, res) => {
   }
 });
 
-
 // Arranque del servidor
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => console.log('Servidor corriendo en puerto ' + PORT));
+
