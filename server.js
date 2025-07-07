@@ -295,13 +295,14 @@ app.get('/api/admin/facturas/:id', verifyToken, async (req, res) => {
 
     // Obtener detalle de los artículos (citas)
     const detalle = await pool.query(`
-      SELECT p.nombre AS descripcion, c.fecha, h.hora, c.precio
-      FROM detalle_factura df
-      JOIN citas c ON df.cita_id = c.id
-      JOIN patologias p ON c.patologia_id = p.id
-      JOIN horarios h ON c.hora_id = h.id
-      WHERE df.factura_id = $1
-    `, [facturaId]);
+  SELECT p.nombre AS descripcion, c.fecha, h.hora, c.precio
+  FROM detalle_factura df
+  JOIN citas c ON df.cita_id = c.id
+  JOIN patologias p ON c.patologia_id = p.id
+  JOIN horarios h ON c.hora_id = h.id
+  WHERE df.factura_id = $1
+`, [facturaId]);
+
 
     res.json({
       encabezado: encabezado.rows[0],
